@@ -1,5 +1,13 @@
 import React, { useEffect, useRef } from 'react';
 
+interface TreeNode {
+  key: number;
+  left: TreeNode | null;
+  right: TreeNode | null;
+  height?: number;
+  color?: string;
+}
+
 interface TreeCanvasProps {
   treeData: any;
   treeType: string;
@@ -19,72 +27,95 @@ export default function TreeCanvas({ treeData, treeType }: TreeCanvasProps) {
     ctx.fillStyle = '#f0f4ff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Draw sample tree visualization
-    drawSampleTree(ctx, canvas.width, canvas.height, treeType);
+    if (treeData && treeData.tree) {
+      drawTree(ctx, treeData.tree, canvas.width, canvas.height, treeType);
+    } else {
+      ctx.font = '14px Arial';
+      ctx.fillStyle = '#999';
+      ctx.textAlign = 'center';
+      ctx.fillText('Tree is empty. Insert values to visualize.', canvas.width / 2, canvas.height / 2);
+    }
+
+    // Draw tree info
+    if (treeData && treeData.inorder) {
+      ctx.font = '12px Arial';
+      ctx.fillStyle = '#333';
+      ctx.textAlign = 'left';
+      ctx.fillText(`Inorder: [${treeData.inorder.join(', ')}]`, 20, canvas.height - 10);
+    }
   }, [treeData, treeType]);
 
-  const drawSampleTree = (
+  const drawTree = (
     ctx: CanvasRenderingContext2D,
+    node: TreeNode | null,
     width: number,
     height: number,
-    treeType: string
+    treeType: string,
+    x = width / 2,
+    y = 40,
+    xOffset = width / 4
   ) => {
-    ctx.font = '14px Arial';
-    ctx.fillStyle = '#333';
+    if (!node) return;
+
+    // Draw connections to children first
+    if (node.left) {
+      const leftX = x - xOffset;
+      const leftY = y + 80;
+      ctx.strokeStyle = '#ccc';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x, y + 20);
+      ctx.lineTo(leftX, leftY - 20);
+      ctx.stroke();
+      drawTree(ctx, node.left, width, height, treeType, leftX, leftY, xOffset / 2);
+    }
+
+    if (node.right) {
+      const rightX = x + xOffset;
+      const rightY = y + 80;
+      ctx.strokeStyle = '#ccc';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x, y + 20);
+      ctx.lineTo(rightX, rightY - 20);
+      ctx.stroke();
+      drawTree(ctx, node.right, width, height, treeType, rightX, rightY, xOffset / 2);
+    }
+
+    // Draw node
+    const nodeColor = getNodeColor(node, treeType);
+    ctx.fillStyle = nodeColor;
+    ctx.beginPath();
+    ctx.arc(x, y, 20, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Draw text
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 12px Arial';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+    ctx.fillText(node.key.toString(), x, y);
 
-    // Draw a sample tree
-    const centerX = width / 2;
-    const startY = 50;
+    // Draw height/depth for AVL
+    if (treeType === 'avl' && node.height !== undefined) {
+      ctx.fillStyle = '#666';
+      ctx.font = '10px Arial';
+      ctx.fillText(`h:${node.height}`, x, y + 35);
+    }
+  };
 
-    // Root node
-    ctx.fillStyle = treeType === 'rbt' ? '#d32f2f' : '#667eea';
-    ctx.beginPath();
-    ctx.arc(centerX, startY, 25, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = '#fff';
-    ctx.fillText('50', centerX, startY);
-
-    // Left child
-    const leftX = centerX - 100;
-    const leftY = startY + 80;
-    ctx.strokeStyle = '#667eea';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(centerX, startY + 25);
-    ctx.lineTo(leftX, leftY - 25);
-    ctx.stroke();
-
-    ctx.fillStyle = treeType === 'rbt' ? '#333' : '#667eea';
-    ctx.beginPath();
-    ctx.arc(leftX, leftY, 25, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#fff';
-    ctx.fillText('30', leftX, leftY);
-
-    // Right child
-    const rightX = centerX + 100;
-    ctx.strokeStyle = '#667eea';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(centerX, startY + 25);
-    ctx.lineTo(rightX, leftY - 25);
-    ctx.stroke();
-
-    ctx.fillStyle = treeType === 'rbt' ? '#333' : '#667eea';
-    ctx.beginPath();
-    ctx.arc(rightX, leftY, 25, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#fff';
-    ctx.fillText('70', rightX, leftY);
-
-    // Add tree type info
-    ctx.font = 'bold 16px Arial';
-    ctx.fillStyle = '#667eea';
-    ctx.textAlign = 'left';
-    ctx.fillText(`Tree Type: ${treeType.toUpperCase()}`, 20, height - 20);
+  const getNodeColor = (node: TreeNode, treeType: string): string => {
+    if (treeType === 'rbt') {
+      return node.color === 'RED' ? '#d32f2f' : '#1a1a1a';
+    } else if (treeType === 'avl') {
+      return '#667eea';
+    } else {
+      return '#4caf50';
+    }
   };
 
   return (
@@ -92,8 +123,8 @@ export default function TreeCanvas({ treeData, treeType }: TreeCanvasProps) {
       <h2>🎨 Tree Visualization</h2>
       <canvas
         ref={canvasRef}
-        width={600}
-        height={400}
+        width={700}
+        height={450}
         className="tree-canvas"
       />
     </div>

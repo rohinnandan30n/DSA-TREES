@@ -69,6 +69,12 @@ export default function TreeSelector({
         >
           📖 Theory
         </button>
+        <button
+          className={`mode-btn ${currentMode === 'code' ? 'active' : ''}`}
+          onClick={() => onSelectMode('code')}
+        >
+          💻 Code
+        </button>
       </div>
 
       <div className="info-box">

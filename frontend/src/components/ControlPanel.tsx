@@ -1,14 +1,27 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 interface ControlPanelProps {
   treeType: string;
   onTreeUpdate: (data: any) => void;
+  searchResult?: any;
+  traversals?: { inorder: number[]; preorder: number[]; postorder: number[] } | null;
 }
 
-export default function ControlPanel({ treeType, onTreeUpdate }: ControlPanelProps) {
+export default function ControlPanel({ treeType, onTreeUpdate, searchResult = null, traversals = null }: ControlPanelProps) {
   const [inputValue, setInputValue] = useState('');
   const [operation, setOperation] = useState<'insert' | 'search' | 'delete'>('insert');
   const [result, setResult] = useState('');
+
+  // Update result when searchResult changes
+  useEffect(() => {
+    if (operation === 'search' && searchResult) {
+      if (searchResult.found) {
+        setResult(`${searchResult.message}\n${searchResult.depth}\n${searchResult.path}`);
+      } else {
+        setResult(searchResult.message);
+      }
+    }
+  }, [searchResult, operation]);
 
   const handleOperation = () => {
     const value = parseInt(inputValue);
@@ -19,14 +32,14 @@ export default function ControlPanel({ treeType, onTreeUpdate }: ControlPanelPro
 
     const actions: Record<string, string> = {
       insert: `✅ Inserted ${value} into ${treeType.toUpperCase()}`,
-      search: `🔍 Found ${value} in tree`,
+      search: `🔍 Searching ${value} in tree...`,
       delete: `🗑️ Deleted ${value} from tree`,
     };
 
     setResult(actions[operation]);
     setInputValue('');
 
-    // Simulate tree update
+    // Call the actual tree operation
     onTreeUpdate({ value, operation, tree: treeType });
   };
 
@@ -67,7 +80,7 @@ export default function ControlPanel({ treeType, onTreeUpdate }: ControlPanelPro
 
       {result && (
         <div className="result-box">
-          <p>{result}</p>
+          <p style={{ whiteSpace: 'pre-wrap' }}>{result}</p>
         </div>
       )}
 
@@ -83,6 +96,24 @@ export default function ControlPanel({ treeType, onTreeUpdate }: ControlPanelPro
           Insert 70
         </button>
       </div>
+
+      {traversals && (
+        <div className="traversals-section">
+          <h3>📊 Tree Traversals</h3>
+          <div className="traversal-item">
+            <strong>Inorder (Left-Root-Right):</strong>
+            <p>{traversals.inorder.length > 0 ? traversals.inorder.join(' → ') : 'Empty'}</p>
+          </div>
+          <div className="traversal-item">
+            <strong>Preorder (Root-Left-Right):</strong>
+            <p>{traversals.preorder.length > 0 ? traversals.preorder.join(' → ') : 'Empty'}</p>
+          </div>
+          <div className="traversal-item">
+            <strong>Postorder (Left-Right-Root):</strong>
+            <p>{traversals.postorder.length > 0 ? traversals.postorder.join(' → ') : 'Empty'}</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

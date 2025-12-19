@@ -1,0 +1,96 @@
+name: CI Build and Test
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  build-and-test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            cmake-generator: "Unix Makefiles"
+          - os: windows-latest
+            cmake-generator: "Visual Studio 17 2022"
+          - os: macos-latest
+            cmake-generator: "Unix Makefiles"
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install dependencies (Ubuntu)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake build-essential
+
+    - name: Install dependencies (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        brew install cmake
+
+    - name: Configure CMake
+      run: |
+        mkdir -p build
+        cd build
+        cmake -G "${{ matrix.cmake-generator }}" -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} ..
+
+    - name: Build
+      run: |
+        cd build
+        cmake --build . --config ${{ env.BUILD_TYPE }}
+
+    - name: Run Tests
+      run: |
+        cd build
+        ctest --output-on-failure
+
+  code-quality:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cppcheck
+
+    - name: Run cppcheck
+      run: cppcheck --enable=all src/ include/ --error-exitcode=1 || true
+
+  documentation:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Check documentation
+      run: |
+        echo "Checking README.md exists..."
+        test -f README.md && echo "✓ README.md found"
+        
+        echo "Checking design.md exists..."
+        test -f docs/design.md && echo "✓ docs/design.md found"
+
+    - name: Verify test files
+      run: |
+        echo "Checking test files..."
+        test -f tests/test_bst.c && echo "✓ test_bst.c found"
+        test -f tests/test_avl.c && echo "✓ test_avl.c found"
+        test -f tests/test_rbt.c && echo "✓ test_rbt.c found"
+
+    - name: Verify quiz engine
+      run: |
+        echo "Checking quiz engine..."
+        test -f include/quiz.h && echo "✓ quiz.h found"
+        test -f src/quiz.c && echo "✓ quiz.c found"

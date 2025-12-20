@@ -52,6 +52,12 @@ export default function TreeSelector({
           ⚙️ Operations
         </button>
         <button
+          className={`mode-btn ${currentMode === 'visualizer' ? 'active' : ''}`}
+          onClick={() => onSelectMode('visualizer')}
+        >
+          👀 Visualizer
+        </button>
+        <button
           className={`mode-btn ${currentMode === 'lessons' ? 'active' : ''}`}
           onClick={() => onSelectMode('lessons')}
         >

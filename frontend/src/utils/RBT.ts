@@ -15,8 +15,21 @@ export interface SearchResult {
   path?: string;
 }
 
+export interface ExecutionStep {
+  lineNumber: number;
+  code: string;
+  variables: Record<string, any>;
+  operation: string;
+  description: string;
+  currentNode?: number;
+  visitedPath?: number[];
+  comparisonNode?: number;
+  highlightedNodes?: number[];
+}
+
 export class RBT {
   root: RBTNode | null = null;
+  executionSteps: ExecutionStep[] = [];
 
   insert(key: number): void {
     let node: RBTNode | null = this.root;
@@ -54,25 +67,146 @@ export class RBT {
     this._fixInsert(newNode);
   }
 
-  private _fixInsert(node: RBTNode): void {
+  insertWithTracking(key: number): ExecutionStep[] {
+    this.executionSteps = [];
+    let node: RBTNode | null = this.root;
+    let parent: RBTNode | null = null;
+    const path: number[] = [];
+
+    this.executionSteps.push({
+      lineNumber: 5,
+      code: 'let node = this.root; let parent = null;',
+      operation: 'init',
+      description: 'Starting RBT insertion',
+      variables: { key },
+      visitedPath: [],
+    });
+
+    while (node) {
+      path.push(node.key);
+      this.executionSteps.push({
+        lineNumber: 7,
+        code: 'while (node) { if (key < node.key) node = node.left ...',
+        operation: 'traverse',
+        description: `At node ${node.key}, comparing with ${key}`,
+        variables: { nodeKey: node.key, key },
+        currentNode: node.key,
+        visitedPath: [...path],
+        comparisonNode: node.key,
+      });
+
+      parent = node;
+      if (key < node.key) {
+        node = node.left;
+      } else if (key > node.key) {
+        node = node.right;
+      } else {
+        this.executionSteps.push({
+          lineNumber: 14,
+          code: 'if (key === node.key) return; // Duplicate',
+          operation: 'duplicate',
+          description: `Key ${key} already exists`,
+          variables: { key },
+          currentNode: node.key,
+        });
+        return this.executionSteps;
+      }
+    }
+
+    this.executionSteps.push({
+      lineNumber: 17,
+      code: 'const newNode = { key, color: RED, ... }',
+      operation: 'create',
+      description: `Creating new RED node with key=${key}`,
+      variables: { key, color: 'RED' },
+      currentNode: key,
+      visitedPath: [...path, key],
+    });
+
+    const newNode: RBTNode = {
+      key,
+      color: 'RED',
+      left: null,
+      right: null,
+      parent,
+    };
+
+    if (!parent) {
+      this.root = newNode;
+      newNode.color = 'BLACK';
+      this.executionSteps.push({
+        lineNumber: 21,
+        code: 'if (!parent) { this.root = newNode; newNode.color = BLACK; }',
+        operation: 'root-insert',
+        description: `Node ${key} is root, colored BLACK`,
+        variables: { key, color: 'BLACK' },
+        currentNode: key,
+      });
+      return this.executionSteps;
+    } else if (key < parent.key) {
+      parent.left = newNode;
+    } else {
+      parent.right = newNode;
+    }
+
+    this.executionSteps.push({
+      lineNumber: 25,
+      code: 'parent.left/right = newNode;',
+      operation: 'link',
+      description: `Linked node ${key} to parent ${parent.key}`,
+      variables: { key, parentKey: parent.key },
+      currentNode: key,
+      visitedPath: [...path, key],
+    });
+
+    this._fixInsertWithTracking(newNode);
+    return this.executionSteps;
+  }
+
+  private _fixInsertWithTracking(node: RBTNode): void {
     while (node.parent && node.parent.color === 'RED') {
+      const parentKey = node.parent.key;
+      const uncleKey = node.parent.parent?.left === node.parent ? node.parent.parent?.right?.key : node.parent.parent?.left?.key;
+
       if (node.parent === node.parent.parent?.left) {
         const uncle = node.parent.parent?.right;
 
-        // Case 1: Uncle is RED
         if (uncle && uncle.color === 'RED') {
+          this.executionSteps.push({
+            lineNumber: 30,
+            code: 'if (uncle.color === RED) { recolor... }',
+            operation: 'recolor',
+            description: `Recoloring: parent(${parentKey}) and uncle(${uncleKey}) BLACK, grandparent RED`,
+            variables: { nodeKey: node.key, uncle: uncleKey },
+            currentNode: node.key,
+            highlightedNodes: [parentKey, uncleKey || 0, node.parent.parent?.key || 0].filter(Boolean),
+          });
           node.parent.color = 'BLACK';
           uncle.color = 'BLACK';
           node.parent.parent!.color = 'RED';
           node = node.parent.parent!;
         } else {
-          // Uncle is BLACK (or null)
-          // Case 2: Node is right child
           if (node === node.parent.right) {
+            this.executionSteps.push({
+              lineNumber: 35,
+              code: 'if (node === parent.right) { rotateLeft(parent); }',
+              operation: 'rotate',
+              description: `Left rotation at node ${parentKey}`,
+              variables: { nodeKey: node.key, rotationType: 'LEFT' },
+              currentNode: parentKey,
+              highlightedNodes: [parentKey, node.key],
+            });
             node = node.parent;
             this._rotateLeft(node);
           }
-          // Case 3: Node is left child (or after rotation)
+          this.executionSteps.push({
+            lineNumber: 40,
+            code: 'parent.color = BLACK; grandparent.color = RED; rotateRight(grandparent);',
+            operation: 'rotate-recolor',
+            description: `Recoloring and right rotation at grandparent`,
+            variables: { parentKey, grandparentKey: node.parent?.parent?.key },
+            currentNode: node.key,
+          });
           node.parent!.color = 'BLACK';
           node.parent!.parent!.color = 'RED';
           this._rotateRight(node.parent!.parent!);
@@ -80,20 +214,42 @@ export class RBT {
       } else {
         const uncle = node.parent.parent?.left;
 
-        // Case 1: Uncle is RED
         if (uncle && uncle.color === 'RED') {
+          this.executionSteps.push({
+            lineNumber: 30,
+            code: 'if (uncle.color === RED) { recolor... }',
+            operation: 'recolor',
+            description: `Recoloring: parent(${parentKey}) and uncle(${uncleKey}) BLACK, grandparent RED`,
+            variables: { nodeKey: node.key, uncle: uncleKey },
+            currentNode: node.key,
+            highlightedNodes: [parentKey, uncleKey || 0, node.parent.parent?.key || 0].filter(Boolean),
+          });
           node.parent.color = 'BLACK';
           uncle.color = 'BLACK';
           node.parent.parent!.color = 'RED';
           node = node.parent.parent!;
         } else {
-          // Uncle is BLACK (or null)
-          // Case 2: Node is left child
           if (node === node.parent.left) {
+            this.executionSteps.push({
+              lineNumber: 35,
+              code: 'if (node === parent.left) { rotateRight(parent); }',
+              operation: 'rotate',
+              description: `Right rotation at node ${parentKey}`,
+              variables: { nodeKey: node.key, rotationType: 'RIGHT' },
+              currentNode: parentKey,
+              highlightedNodes: [parentKey, node.key],
+            });
             node = node.parent;
             this._rotateRight(node);
           }
-          // Case 3: Node is right child (or after rotation)
+          this.executionSteps.push({
+            lineNumber: 40,
+            code: 'parent.color = BLACK; grandparent.color = RED; rotateLeft(grandparent);',
+            operation: 'rotate-recolor',
+            description: `Recoloring and left rotation at grandparent`,
+            variables: { parentKey, grandparentKey: node.parent?.parent?.key },
+            currentNode: node.key,
+          });
           node.parent!.color = 'BLACK';
           node.parent!.parent!.color = 'RED';
           this._rotateLeft(node.parent!.parent!);
@@ -303,6 +459,72 @@ export class RBT {
   search(key: number): SearchResult {
     const result = this._searchWithPath(this.root, key, '', 0);
     return result;
+  }
+
+  searchWithTracking(key: number): { result: SearchResult; steps: ExecutionStep[] } {
+    this.executionSteps = [];
+    const result = this._searchTrackedWithPath(this.root, key, []);
+    return { result, steps: this.executionSteps };
+  }
+
+  private _searchTrackedWithPath(node: RBTNode | null, key: number, path: number[]): SearchResult {
+    const currentPath = [...path];
+
+    if (!node) {
+      this.executionSteps.push({
+        lineNumber: 8,
+        code: 'if (!node) return { found: false }',
+        operation: 'not-found',
+        description: `Node is null, ${key} not found`,
+        variables: { key },
+        currentNode: undefined,
+        visitedPath: currentPath,
+      });
+      return { found: false };
+    }
+
+    currentPath.push(node.key);
+
+    this.executionSteps.push({
+      lineNumber: 10,
+      code: 'if (key === node.key) return { found: true }',
+      operation: 'compare',
+      description: `At node ${node.key} (${node.color}), comparing with ${key}`,
+      variables: { nodeKey: node.key, key, color: node.color, match: key === node.key },
+      currentNode: node.key,
+      visitedPath: currentPath,
+      comparisonNode: node.key,
+    });
+
+    if (node.key === key) {
+      this.executionSteps.push({
+        lineNumber: 10,
+        code: 'if (key === node.key) return { found: true }',
+        operation: 'found',
+        description: `✅ Found ${key} at node (${node.color})!`,
+        variables: { key, depth: currentPath.length - 1, color: node.color },
+        currentNode: node.key,
+        visitedPath: currentPath,
+      });
+      return { found: true, key: node.key, depth: currentPath.length - 1, path: currentPath.join(' → ') };
+    }
+
+    const direction = key < node.key ? 'left' : 'right';
+    this.executionSteps.push({
+      lineNumber: 12,
+      code: `if (key < node.key) return search(node.left) else return search(node.right)`,
+      operation: 'traverse',
+      description: `${key} ${key < node.key ? '<' : '>'} ${node.key}, going ${direction}`,
+      variables: { nodeKey: node.key, key, direction },
+      currentNode: node.key,
+      visitedPath: currentPath,
+    });
+
+    if (key < node.key) {
+      return this._searchTrackedWithPath(node.left, key, currentPath);
+    } else {
+      return this._searchTrackedWithPath(node.right, key, currentPath);
+    }
   }
 
   private _searchWithPath(node: RBTNode | null, key: number, path: string, depth: number): SearchResult {

@@ -12,11 +12,170 @@ export interface SearchResult {
   path?: string;
 }
 
+export interface ExecutionStep {
+  lineNumber: number;
+  code: string;
+  variables: Record<string, any>;
+  operation: string;
+  description: string;
+  currentNode?: number;
+  visitedPath?: number[];
+  comparisonNode?: number;
+  balanceFactors?: Record<number, number>;
+  highlightedNodes?: number[];
+  rotationType?: string;
+}
+
 export class AVL {
   root: AVLNode | null = null;
+  executionSteps: ExecutionStep[] = [];
 
   insert(key: number): void {
     this.root = this._insert(this.root, key);
+  }
+
+  insertWithTracking(key: number): ExecutionStep[] {
+    this.executionSteps = [];
+    this.root = this._insertTrackedWithPath(this.root, key, []);
+    return this.executionSteps;
+  }
+
+  private _insertTrackedWithPath(node: AVLNode | null, key: number, path: number[]): AVLNode {
+    const currentPath = [...path];
+    
+    if (!node) {
+      this.executionSteps.push({
+        lineNumber: 6,
+        code: 'if (!node) return new AVLNode(key)',
+        operation: 'create',
+        description: `Creating new AVL node with key=${key}`,
+        variables: { key },
+        currentNode: key,
+        visitedPath: [...currentPath, key],
+        balanceFactors: this._getBalanceFactors(this.root),
+      });
+      return { key, left: null, right: null, height: 1 };
+    }
+
+    currentPath.push(node.key);
+    this.executionSteps.push({
+      lineNumber: 8,
+      code: 'if (key < node.key) { node.left = _insert(...) }',
+      operation: 'enter',
+      description: `At node ${node.key}, comparing with ${key}`,
+      variables: { nodeKey: node.key, key, height: node.height },
+      currentNode: node.key,
+      visitedPath: currentPath,
+      comparisonNode: node.key,
+      balanceFactors: this._getBalanceFactors(this.root),
+    });
+
+    if (key < node.key) {
+      node.left = this._insertTrackedWithPath(node.left, key, currentPath);
+    } else if (key > node.key) {
+      node.right = this._insertTrackedWithPath(node.right, key, currentPath);
+    } else {
+      return node;
+    }
+
+    const oldHeight = node.height;
+    node.height = 1 + Math.max(this._getHeight(node.left), this._getHeight(node.right));
+
+    this.executionSteps.push({
+      lineNumber: 18,
+      code: 'node.height = 1 + Math.max(left.height, right.height)',
+      operation: 'update-height',
+      description: `Updated height of node ${node.key}: ${oldHeight} → ${node.height}`,
+      variables: { nodeKey: node.key, newHeight: node.height },
+      currentNode: node.key,
+      visitedPath: currentPath,
+      balanceFactors: this._getBalanceFactors(this.root),
+    });
+
+    const bf = this._getBalance(node);
+
+    this.executionSteps.push({
+      lineNumber: 20,
+      code: 'const bf = getBalance(node)',
+      operation: 'check-balance',
+      description: `Balance factor of node ${node.key}: bf=${bf}`,
+      variables: { nodeKey: node.key, balanceFactor: bf },
+      currentNode: node.key,
+      visitedPath: currentPath,
+      balanceFactors: this._getBalanceFactors(this.root),
+    });
+
+    // LL Rotation
+    if (bf > 1 && node.left && key < node.left.key) {
+      this.executionSteps.push({
+        lineNumber: 23,
+        code: 'if (bf > 1 && key < node.left.key) return rotateRight(node)',
+        operation: 'rotate',
+        description: `LL Rotation at node ${node.key}`,
+        variables: { nodeKey: node.key, rotationType: 'LL' },
+        currentNode: node.key,
+        visitedPath: currentPath,
+        highlightedNodes: [node.key, node.left.key],
+        rotationType: 'LL',
+        balanceFactors: this._getBalanceFactors(this.root),
+      });
+      return this._rotateRight(node);
+    }
+
+    // RR Rotation
+    if (bf < -1 && node.right && key > node.right.key) {
+      this.executionSteps.push({
+        lineNumber: 27,
+        code: 'if (bf < -1 && key > node.right.key) return rotateLeft(node)',
+        operation: 'rotate',
+        description: `RR Rotation at node ${node.key}`,
+        variables: { nodeKey: node.key, rotationType: 'RR' },
+        currentNode: node.key,
+        visitedPath: currentPath,
+        highlightedNodes: [node.key, node.right.key],
+        rotationType: 'RR',
+        balanceFactors: this._getBalanceFactors(this.root),
+      });
+      return this._rotateLeft(node);
+    }
+
+    // LR Rotation
+    if (bf > 1 && node.left && key > node.left.key) {
+      this.executionSteps.push({
+        lineNumber: 31,
+        code: 'if (bf > 1 && key > node.left.key) return rotateLR(node)',
+        operation: 'rotate',
+        description: `LR Rotation at node ${node.key}`,
+        variables: { nodeKey: node.key, rotationType: 'LR' },
+        currentNode: node.key,
+        visitedPath: currentPath,
+        highlightedNodes: [node.key, node.left.key],
+        rotationType: 'LR',
+        balanceFactors: this._getBalanceFactors(this.root),
+      });
+      node.left = this._rotateLeft(node.left);
+      return this._rotateRight(node);
+    }
+
+    // RL Rotation
+    if (bf < -1 && node.right && key < node.right.key) {
+      this.executionSteps.push({
+        lineNumber: 35,
+        code: 'if (bf < -1 && key < node.right.key) return rotateRL(node)',
+        operation: 'rotate',
+        description: `RL Rotation at node ${node.key}`,
+        variables: { nodeKey: node.key, rotationType: 'RL' },
+        currentNode: node.key,
+        visitedPath: currentPath,
+        highlightedNodes: [node.key, node.right.key],
+        rotationType: 'RL',
+        balanceFactors: this._getBalanceFactors(this.root),
+      });
+      node.right = this._rotateRight(node.right);
+      return this._rotateLeft(node);
+    }
+
+    return node;
   }
 
   private _insert(node: AVLNode | null, key: number): AVLNode {
@@ -112,6 +271,76 @@ export class AVL {
     return result;
   }
 
+  searchWithTracking(key: number): { result: SearchResult; steps: ExecutionStep[] } {
+    this.executionSteps = [];
+    const result = this._searchTrackedWithPath(this.root, key, []);
+    return { result, steps: this.executionSteps };
+  }
+
+  private _searchTrackedWithPath(node: AVLNode | null, key: number, path: number[]): SearchResult {
+    const currentPath = [...path];
+
+    if (!node) {
+      this.executionSteps.push({
+        lineNumber: 8,
+        code: 'if (!node) return { found: false }',
+        operation: 'not-found',
+        description: `Node is null, ${key} not found`,
+        variables: { key },
+        currentNode: undefined,
+        visitedPath: currentPath,
+        balanceFactors: this._getBalanceFactors(this.root),
+      });
+      return { found: false };
+    }
+
+    currentPath.push(node.key);
+
+    this.executionSteps.push({
+      lineNumber: 10,
+      code: 'if (key === node.key) return { found: true }',
+      operation: 'compare',
+      description: `At node ${node.key}, comparing with ${key}`,
+      variables: { nodeKey: node.key, key, match: key === node.key },
+      currentNode: node.key,
+      visitedPath: currentPath,
+      comparisonNode: node.key,
+      balanceFactors: this._getBalanceFactors(this.root),
+    });
+
+    if (node.key === key) {
+      this.executionSteps.push({
+        lineNumber: 10,
+        code: 'if (key === node.key) return { found: true }',
+        operation: 'found',
+        description: `✅ Found ${key} at node!`,
+        variables: { key, depth: currentPath.length - 1 },
+        currentNode: node.key,
+        visitedPath: currentPath,
+        balanceFactors: this._getBalanceFactors(this.root),
+      });
+      return { found: true, key: node.key, depth: currentPath.length - 1, path: currentPath.join(' → ') };
+    }
+
+    const direction = key < node.key ? 'left' : 'right';
+    this.executionSteps.push({
+      lineNumber: 12,
+      code: `if (key < node.key) return search(node.left) else return search(node.right)`,
+      operation: 'traverse',
+      description: `${key} ${key < node.key ? '<' : '>'} ${node.key}, going ${direction}`,
+      variables: { nodeKey: node.key, key, direction },
+      currentNode: node.key,
+      visitedPath: currentPath,
+      balanceFactors: this._getBalanceFactors(this.root),
+    });
+
+    if (key < node.key) {
+      return this._searchTrackedWithPath(node.left, key, currentPath);
+    } else {
+      return this._searchTrackedWithPath(node.right, key, currentPath);
+    }
+  }
+
   private _searchWithPath(node: AVLNode | null, key: number, path: string, depth: number): SearchResult {
     if (!node) return { found: false };
     if (node.key === key) {
@@ -160,6 +389,20 @@ export class AVL {
 
   private _getBalance(node: AVLNode | null): number {
     return node ? this._getHeight(node.left) - this._getHeight(node.right) : 0;
+  }
+
+  private _getBalanceFactors(node: AVLNode | null): Record<number, number> {
+    const factors: Record<number, number> = {};
+    
+    const traverse = (n: AVLNode | null) => {
+      if (!n) return;
+      factors[n.key] = this._getBalance(n);
+      traverse(n.left);
+      traverse(n.right);
+    };
+    
+    traverse(node);
+    return factors;
   }
 
   private _findMin(node: AVLNode): AVLNode {

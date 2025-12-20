@@ -5,12 +5,14 @@ import TreeCanvas from './components/TreeCanvas.tsx';
 import ControlPanel from './components/ControlPanel.tsx';
 import QuizPanel from './components/QuizPanel.tsx';
 import CodePanel from './components/CodePanel.tsx';
+import VisualizerPanel from './components/VisualizerPanel.tsx';
+import PlaybackControls from './components/PlaybackControls.tsx';
 import { BST } from './utils/BST';
-import { AVL } from './utils/AVL';
+import { AVL, type ExecutionStep } from './utils/AVL';
 import { RBT } from './utils/RBT';
 
 type TreeType = 'bst' | 'avl' | 'rbt';
-type ViewMode = 'operations' | 'lessons' | 'quiz' | 'theory' | 'code';
+type ViewMode = 'operations' | 'visualizer' | 'lessons' | 'quiz' | 'theory' | 'code';
 
 export default function App() {
   const [selectedTree, setSelectedTree] = useState<TreeType>('bst');
@@ -18,6 +20,11 @@ export default function App() {
   const [treeData, setTreeData] = useState<any>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [searchResult, setSearchResult] = useState<any>(null);
+  const [executionSteps, setExecutionSteps] = useState<ExecutionStep[]>([]);
+  const [currentStep, setCurrentStep] = useState(0);
+  const [isRunning, setIsRunning] = useState(false);
+  const [speed, setSpeed] = useState(500);
+  const [lastOperation, setLastOperation] = useState<{ type: 'insert' | 'delete' | 'search'; value: number } | null>(null);
   
   // Keep instances keyed by tree type
   const [instances] = useState({
@@ -36,8 +43,23 @@ export default function App() {
 
     try {
       if (operation === 'insert') {
-        tree.insert(value);
+        if (selectedTree === 'bst') {
+          const steps = (tree as BST).insertWithTracking(value);
+          setExecutionSteps(steps);
+          setCurrentStep(0);
+        } else if (selectedTree === 'avl') {
+          const steps = (tree as AVL).insertWithTracking(value);
+          setExecutionSteps(steps);
+          setCurrentStep(0);
+        } else if (selectedTree === 'rbt') {
+          const steps = (tree as RBT).insertWithTracking(value);
+          setExecutionSteps(steps);
+          setCurrentStep(0);
+        } else {
+          tree.insert(value);
+        }
         setSearchResult(null);
+        setLastOperation({ type: 'insert', value });
         setTreeData({
           ...data,
           tree: tree.getRoot(),
@@ -47,8 +69,15 @@ export default function App() {
           timestamp: Date.now(),
         });
       } else if (operation === 'delete') {
-        tree.delete(value);
+        if (selectedTree === 'bst') {
+          const steps = (tree as BST).deleteWithTracking(value);
+          setExecutionSteps(steps);
+          setCurrentStep(0);
+        } else {
+          tree.delete(value);
+        }
         setSearchResult(null);
+        setLastOperation({ type: 'delete', value });
         setTreeData({
           ...data,
           tree: tree.getRoot(),
@@ -58,22 +87,82 @@ export default function App() {
           timestamp: Date.now(),
         });
       } else if (operation === 'search') {
-        const result = tree.search(value);
-        if (result.found) {
-          setSearchResult({
-            found: true,
-            message: `✅ Found ${value}!`,
-            depth: `Depth: ${result.depth}`,
-            path: `Path: ${result.path}`,
-          });
+        if (selectedTree === 'bst') {
+          const { result, steps } = (tree as BST).searchWithTracking(value);
+          setExecutionSteps(steps);
+          setCurrentStep(0);
+          if (result.found) {
+            setSearchResult({
+              found: true,
+              message: `✅ Found ${value}!`,
+              depth: `Depth: ${result.depth}`,
+              path: `Path: ${result.path}`,
+            });
+          } else {
+            setSearchResult({
+              found: false,
+              message: `❌ ${value} not found`,
+              depth: '',
+              path: '',
+            });
+          }
+        } else if (selectedTree === 'avl') {
+          const { result, steps } = (tree as AVL).searchWithTracking(value);
+          setExecutionSteps(steps);
+          setCurrentStep(0);
+          if (result.found) {
+            setSearchResult({
+              found: true,
+              message: `✅ Found ${value}!`,
+              depth: `Depth: ${result.depth}`,
+              path: `Path: ${result.path}`,
+            });
+          } else {
+            setSearchResult({
+              found: false,
+              message: `❌ ${value} not found`,
+              depth: '',
+              path: '',
+            });
+          }
+        } else if (selectedTree === 'rbt') {
+          const { result, steps } = (tree as RBT).searchWithTracking(value);
+          setExecutionSteps(steps);
+          setCurrentStep(0);
+          if (result.found) {
+            setSearchResult({
+              found: true,
+              message: `✅ Found ${value}!`,
+              depth: `Depth: ${result.depth}`,
+              path: `Path: ${result.path}`,
+            });
+          } else {
+            setSearchResult({
+              found: false,
+              message: `❌ ${value} not found`,
+              depth: '',
+              path: '',
+            });
+          }
         } else {
-          setSearchResult({
-            found: false,
-            message: `❌ ${value} not found`,
-            depth: '',
-            path: '',
-          });
+          const result = tree.search(value);
+          if (result.found) {
+            setSearchResult({
+              found: true,
+              message: `✅ Found ${value}!`,
+              depth: `Depth: ${result.depth}`,
+              path: `Path: ${result.path}`,
+            });
+          } else {
+            setSearchResult({
+              found: false,
+              message: `❌ ${value} not found`,
+              depth: '',
+              path: '',
+            });
+          }
         }
+        setLastOperation({ type: 'search', value });
       }
     } catch (e) {
       console.error('Operation error:', e);
@@ -90,6 +179,8 @@ export default function App() {
     const tree = getTreeInstance();
     tree.clear();
     setTreeData(null);
+    setExecutionSteps([]);
+    setCurrentStep(0);
   };
 
   // Update treeData when selectedTree changes to show the current state of the selected tree
@@ -105,6 +196,21 @@ export default function App() {
       setTreeData(null);
     }
   }, [selectedTree]);
+
+  // Auto-play logic for visualizer
+  useEffect(() => {
+    if (!isRunning || executionSteps.length === 0) return;
+    
+    const timer = setTimeout(() => {
+      if (currentStep < executionSteps.length - 1) {
+        setCurrentStep(currentStep + 1);
+      } else {
+        setIsRunning(false);
+      }
+    }, speed);
+
+    return () => clearTimeout(timer);
+  }, [isRunning, currentStep, executionSteps.length, speed]);
 
   return (
     <div className="app">
@@ -134,6 +240,53 @@ export default function App() {
                 searchResult={searchResult}
                 traversals={treeData ? { inorder: treeData.inorder, preorder: treeData.preorder, postorder: treeData.postorder } : null}
               />
+            </>
+          )}
+
+          {viewMode === 'visualizer' && (
+            <>
+              {executionSteps.length > 0 && lastOperation && (
+                <PlaybackControls 
+                  currentStep={currentStep}
+                  totalSteps={executionSteps.length}
+                  onStepChange={setCurrentStep}
+                  isRunning={isRunning}
+                  onRunningChange={setIsRunning}
+                  speed={speed}
+                  onSpeedChange={setSpeed}
+                  operationType={lastOperation.type}
+                  operationValue={lastOperation.value}
+                />
+              )}
+              {executionSteps.length > 0 && (
+                <TreeCanvas 
+                  treeData={treeData} 
+                  treeType={selectedTree}
+                  highlightedNode={executionSteps[currentStep]?.currentNode}
+                  visitedPath={executionSteps[currentStep]?.visitedPath}
+                  comparisonNode={executionSteps[currentStep]?.comparisonNode}
+                  operationType={lastOperation?.type}
+                  balanceFactors={selectedTree === 'avl' ? (executionSteps[currentStep]?.balanceFactors || {}) : {}}
+                />
+              )}
+              {executionSteps.length === 0 && (
+                <TreeCanvas treeData={treeData} treeType={selectedTree} />
+              )}
+              <ControlPanel 
+                treeType={selectedTree}
+                onTreeUpdate={handleTreeUpdate}
+                searchResult={searchResult}
+                traversals={treeData ? { inorder: treeData.inorder, preorder: treeData.preorder, postorder: treeData.postorder } : null}
+              />
+              {executionSteps.length > 0 && lastOperation && (
+                <VisualizerPanel 
+                  executionSteps={executionSteps}
+                  currentStep={currentStep}
+                  operationType={lastOperation.type}
+                  operationValue={lastOperation.value}
+                  treeType={selectedTree}
+                />
+              )}
             </>
           )}
 
